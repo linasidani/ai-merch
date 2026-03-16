@@ -9,7 +9,7 @@ export interface DesignConcept {
 async function callGeminiForConcept(prompt: string): Promise<DesignConcept> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -17,35 +17,30 @@ async function callGeminiForConcept(prompt: string): Promise<DesignConcept> {
         contents: [{
           parts: [{
             text: `You are a creative director for a print-on-demand merch brand.
-Given a design prompt, respond ONLY with a raw JSON object — no markdown, no backticks, no explanation.
-The JSON must have exactly these fields:
-- title: short 2-3 word design name
-- palette: array of 3 hex color strings
-- style: one of geometric, botanical, typographic, abstract, illustrative
-- tag: one of "AI Drop 01", "Limited", "Collab", "New", "Classic"
-- svgPattern: a complete SVG string starting with <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"> with creative shapes/paths/circles matching the prompt. Max 800 chars. No images or text elements.
-
+Respond ONLY with a raw JSON object, no markdown, no backticks.
+Fields: title (string), palette (array of 3 hex colors), style (string), tag (string), svgPattern (SVG string viewBox 0 0 200 200).
 Design prompt: "${prompt}"`
           }]
         }],
-        generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 1200,
-          responseMimeType: 'application/json',
-        },
+        generationConfig: { temperature: 0.9, maxOutputTokens: 1200 },
       }),
     }
   );
 
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  
+  console.log('=== GEMINI RAW RESPONSE ===');
+  console.log(text);
+  console.log('===========================');
 
   try {
     const match = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match ? match[0] : text) as DesignConcept;
     if (!parsed.svgPattern || !parsed.palette || !parsed.title) throw new Error('missing fields');
     return parsed;
-  } catch {
+  } catch (e) {
+    console.log('Parse error:', e);
     const hue = Math.abs(prompt.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
     const color1 = `hsl(${hue}, 70%, 60%)`;
     const color2 = `hsl(${(hue + 120) % 360}, 70%, 60%)`;
