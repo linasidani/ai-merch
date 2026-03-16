@@ -1,8 +1,3 @@
-/**
- * AI Design Generator Service
- * Uses Google Gemini API for design concept generation
- */
-
 export interface DesignConcept {
   title: string;
   palette: string[];
@@ -22,19 +17,22 @@ async function callGeminiForConcept(prompt: string): Promise<DesignConcept> {
         contents: [{
           parts: [{
             text: `You are a creative director for a print-on-demand merch brand.
-Given a design prompt, respond ONLY with a JSON object (no markdown, no backticks, no preamble) with this exact shape:
-{
-  "title": "Short punchy design name (2-3 words)",
-  "palette": ["#hex1", "#hex2", "#hex3"],
-  "style": "one of: geometric | botanical | typographic | abstract | illustrative",
-  "tag": "one of: AI Drop 01 | Limited | Collab | New | Classic",
-  "svgPattern": "a complete inline SVG string with viewBox 0 0 200 200 containing a creative pattern matching the prompt using shapes, lines, circles, paths. No images. Keep under 800 chars."
-}
+Given a design prompt, respond ONLY with a raw JSON object — no markdown, no backticks, no explanation.
+The JSON must have exactly these fields:
+- title: short 2-3 word design name
+- palette: array of 3 hex color strings
+- style: one of geometric, botanical, typographic, abstract, illustrative
+- tag: one of "AI Drop 01", "Limited", "Collab", "New", "Classic"
+- svgPattern: a complete SVG string starting with <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"> with creative shapes/paths/circles matching the prompt. Max 800 chars. No images or text elements.
 
 Design prompt: "${prompt}"`
           }]
         }],
-        generationConfig: { temperature: 0.9, maxOutputTokens: 1000 }
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 1200,
+          responseMimeType: 'application/json',
+        },
       }),
     }
   );
@@ -43,15 +41,20 @@ Design prompt: "${prompt}"`
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
   try {
-    const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean) as DesignConcept;
+    const match = text.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : text) as DesignConcept;
+    if (!parsed.svgPattern || !parsed.palette || !parsed.title) throw new Error('missing fields');
+    return parsed;
   } catch {
+    const hue = Math.abs(prompt.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 360;
+    const color1 = `hsl(${hue}, 70%, 60%)`;
+    const color2 = `hsl(${(hue + 120) % 360}, 70%, 60%)`;
     return {
-      title: prompt.slice(0, 30),
-      palette: ['#6b7cff', '#ff6b6b', '#111111'],
+      title: prompt.slice(0, 28),
+      palette: [color1, color2, '#111111'],
       style: 'abstract',
       tag: 'AI Drop 01',
-      svgPattern: `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#f8f8ff"/><circle cx="100" cy="100" r="60" fill="none" stroke="#6b7cff" stroke-width="2"/><path d="M40,100 Q70,60 100,100 Q130,140 160,100" fill="none" stroke="#ff6b6b" stroke-width="2.5"/></svg>`,
+      svgPattern: `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect width="200" height="200" fill="#f9f9f9"/><circle cx="100" cy="100" r="65" fill="none" stroke="${color1}" stroke-width="2.5"/><circle cx="100" cy="100" r="42" fill="none" stroke="${color2}" stroke-width="1.5" opacity="0.7"/><path d="M35,100 Q67,55 100,100 Q133,145 165,100" fill="none" stroke="${color1}" stroke-width="3"/><circle cx="100" cy="100" r="10" fill="${color1}" opacity="0.8"/></svg>`,
     };
   }
 }
